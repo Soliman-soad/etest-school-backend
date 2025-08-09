@@ -2,7 +2,7 @@ import OTPModel from "../models/OTP";
 
 export const generateOTP = async (identifier: string) => {
   const code = Math.floor(100000 + Math.random() * 900000).toString();
-  const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000);  
   await OTPModel.create({ identifier, code, expiresAt });
   return code;
 };

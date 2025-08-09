@@ -72,34 +72,34 @@ const ResultSchema: Schema = new Schema(
   }
 );
 
-// Instance method to determine certified level based on business rules
+
 ResultSchema.methods.determineCertifiedLevel = function(): string | null {
   const score = this.score;
   
   switch (this.step) {
     case 1:
-      if (score < 25) return null; // Fail, no retake
-      if (score < 50) return "A1";
-      if (score < 75) return "A2";
-      return "A2"; // Proceed to step 2
+      if (score < 25) return null; 
+      if (score >= 25 && score < 50) return "A1";
+      if (score >= 50 && score < 75) return "A2";
+      return "A2"; 
       
     case 2:
-      if (score < 25) return "A2"; // Remain at A2
-      if (score < 50) return "B1";
-      if (score < 75) return "B2";
-      return "B2"; // Proceed to step 3
+      if (score < 25) return "A2"; 
+      if (score >= 25 && score < 50) return "B1";
+      if (score >= 50 && score < 75) return "B2";
+      return "B2"; 
       
     case 3:
-      if (score < 25) return "B2"; // Remain at B2
-      if (score < 50) return "C1";
-      return "C2";
+      if (score < 25) return "B2"; 
+      if (score >= 25 && score < 50) return "C1";
+      return "C2"; 
       
     default:
       return null;
   }
 };
 
-// Static method to create and save results with business logic
+
 ResultSchema.statics.calculateResults = async function(
   userId: mongoose.Types.ObjectId,
   step: number,
@@ -116,14 +116,14 @@ ResultSchema.statics.calculateResults = async function(
     total: totalQuestions
   });
   
-  // Determine and set awarded level
+  
   result.awardedLevel = result.determineCertifiedLevel();
   
   await result.save();
   return result;
 };
 
-// Indexes for better query performance
+
 ResultSchema.index({ user: 1 });
 ResultSchema.index({ user: 1, step: 1 }, { unique: true });
 

@@ -3,6 +3,32 @@ import mongoose, { Schema, Document } from "mongoose";
 
 export type Level = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 
+
+export enum Competency {
+  INFORMATION_BROWSING = "Information Browsing",
+  INFORMATION_EVALUATION = "Information Evaluation",
+  INFORMATION_MANAGEMENT = "Information Management",
+  PERSONAL_DATA_PROTECTION = "Personal Data Protection",
+  DEVICE_PROTECTION = "Device Protection",
+  HEALTH_PROTECTION = "Health Protection",
+  ENVIRONMENT_PROTECTION = "Environment Protection",
+  TECHNICAL_PROBLEM_SOLVING = "Technical Problem Solving",
+  NEEDS_IDENTIFICATION = "Needs Identification",
+  DIGITAL_TOOL_SELECTION = "Digital Tool Selection",
+  TECHNOLOGY_CREATIVE_USE = "Technology Creative Use",
+  DIGITAL_COMPETENCE_GAPS = "Digital Competence Gaps",
+  COPYRIGHT_LICENSES = "Copyright and Licenses",
+  PROGRAMMING = "Programming",
+  DIGITAL_COMMUNICATION = "Digital Communication",
+  CONTENT_SHARING = "Content Sharing",
+  ONLINE_PARTICIPATION = "Online Participation",
+  COLLABORATION = "Collaboration",
+  NETIQUETTE = "Netiquette",
+  DIGITAL_IDENTITY_MANAGEMENT = "Digital Identity Management",
+  DIGITAL_CONTENT_DEVELOPMENT = "Digital Content Development",
+  DIGITAL_CONTENT_INTEGRATION = "Digital Content Integration"
+}
+
 export interface IQuestion extends Document {
   competency: string;
   level: Level;
@@ -70,7 +96,7 @@ const QuestionSchema: Schema = new Schema(
   }
 );
 
-// Indexes for better query performance
+
 QuestionSchema.index({ competency: 1, level: 1 });
 QuestionSchema.index({ level: 1 });
 
