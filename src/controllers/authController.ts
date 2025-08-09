@@ -15,15 +15,14 @@ const transporter = nodemailer.createTransport({
 });
 
 export const register = async (req: Request, res: Response) => {
-  const { name, email, password } = req.body;
+  const { name, email, password, role } = req.body;
   const existing = await User.findOne({ email });
   if (existing)
     return res.status(400).json({ message: "Email already registered" });
 
   const hashed = await bcrypt.hash(password, 10);
-  const user = await User.create({ name, email, password: hashed });
+  const user = await User.create({ name, email, password: hashed, role });
 
-  // generate OTP and send email
   const code = await generateOTP(email);
   await transporter.sendMail({
     from: process.env.FROM_EMAIL,
@@ -49,24 +48,45 @@ export const verify = async (req: Request, res: Response) => {
 };
 
 export const login = async (req: Request, res: Response) => {
-  const { email, password } = req.body;
-  const user = await User.findOne({ email });
-  if (!user) return res.status(400).json({ message: "Invalid credentials" });
-  const match = await bcrypt.compare(password, user.password);
-  if (!match) return res.status(400).json({ message: "Invalid credentials" });
+  try {
+    const { email, password } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ message: "Invalid credentials" });
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) return res.status(400).json({ message: "Invalid credentials" });
 
-  const payload = { id: user._id, email: user.email, role: user.role };
-  const accessToken = signAccessToken(payload);
-  const refreshToken = signRefreshToken(payload);
+    const payload = { id: user._id, email: user.email, role: user.role };
+    const accessToken = signAccessToken(payload);
+    const refreshToken = signRefreshToken(payload);
 
-  res.json({ accessToken, refreshToken });
+    res.cookie("accessToken", accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 15 * 60 * 1000,
+    });
+
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.json({ message: "Login successful" });
+  } catch (err) {
+    console.log(err);
+  }
 };
 
 export const refresh = async (req: Request, res: Response) => {
-  const { token } = req.body;
+  const refreshToken = req.cookies.refreshToken;
+  if (!refreshToken)
+    return res.status(401).json({ message: "No refresh token" });
+
   try {
     const payload = (await import("jsonwebtoken")).verify(
-      token,
+      refreshToken,
       process.env.JWT_REFRESH_SECRET || "refresh_secret"
     ) as any;
     const accessToken = signAccessToken({
@@ -74,8 +94,31 @@ export const refresh = async (req: Request, res: Response) => {
       email: payload.email,
       role: payload.role,
     });
-    res.json({ accessToken });
+
+    res.cookie("accessToken", accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 15 * 60 * 1000,
+    });
+
+    res.json({ message: "Token refreshed" });
   } catch (err) {
     res.status(401).json({ message: "Invalid refresh token" });
+  }
+};
+
+export const logOut = async (_req: Request, res: Response) => {
+  res.clearCookie("accessToken");
+  res.clearCookie("refreshToken");
+  res.json({ message: "Logged out successfully" });
+};
+
+export const getUser = async (req: Request, res: Response) => {
+  try {
+    const user = await User.findById(req.user.id);
+    res.json(user);
+  } catch (err) {
+    console.log(err);
   }
 };

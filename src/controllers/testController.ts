@@ -1,81 +1,124 @@
 import { Request, Response } from "express";
-import Question from "../models/Question";
-import Result from "../models/Result";
 import mongoose from "mongoose";
+import Question, { Level } from "../models/Question";
+import Result from "../models/Result";
 
-// helper to map step -> levels
-const STEP_LEVELS: Record<number, string[]> = {
-  1: ["A1", "A2"],
-  2: ["B1", "B2"],
-  3: ["C1", "C2"]
+export const getTestQuestions = async (req: Request, res: Response) => {
+  try {
+    const { step } = req.query;
+    const stepNumber = parseInt(step as string);
+
+    if (![1, 2, 3].includes(stepNumber)) {
+      return res.status(400).json({ message: "Invalid test step" });
+    }
+
+    let levels: Level[];
+    switch (stepNumber) {
+      case 1:
+        levels = ["A1", "A2"];
+        break;
+      case 2:
+        levels = ["B1", "B2"];
+        break;
+      case 3:
+        levels = ["C1", "C2"];
+        break;
+      default:
+        levels = [];
+    }
+
+    const questions = await Question.aggregate([
+      { $match: { level: { $in: levels } } },
+      { $sample: { size: 44 } },
+      { $project: { answerIndex: 0, __v: 0, createdAt: 0, updatedAt: 0 } },
+    ]);
+
+    res.json(questions);
+  } catch (error) {
+    console.error("Error fetching test questions:", error);
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
-export const fetchQuestionsForStep = async (req: Request, res: Response) => {
-  const { step } = req.params;
-  const stepNum = Number(step);
-  if (![1, 2, 3].includes(stepNum)) return res.status(400).json({ message: "Invalid step" });
+export const submitTest = async (req: Request, res: Response) => {
+  try {
+    const { step, answers } = req.body;
+    const userId = req.user.id;
 
-  const levels = STEP_LEVELS[stepNum];
-  // We need 44 questions: 22 competencies x 2 levels -> assume questions are present
-  // For simplicity: sample 44 documents matching the levels
-  const questions = await Question.aggregate([
-    { $match: { level: { $in: levels } } },
-    { $sample: { size: 44 } },
-    { $project: { answerIndex: 0 } } // do not send answers
-  ]);
+    if (![1, 2, 3].includes(step)) {
+      return res.status(400).json({ message: "Invalid test step" });
+    }
 
-  res.json({ questions });
+    const existingResult = await Result.findOne({ user: userId, step });
+    if (existingResult) {
+      return res.status(400).json({ message: "Test step already completed" });
+    }
+
+    if (step === 1) {
+      const previousAttempt = await Result.findOne({
+        user: userId,
+        step: 1,
+        score: { $lt: 25 },
+      });
+
+      if (previousAttempt) {
+        return res.status(403).json({
+          message: "You failed step 1 and cannot retake it",
+        });
+      }
+    }
+
+    const questionIds = Object.keys(answers);
+    const questions = await Question.find({
+      _id: { $in: questionIds.map((id) => new mongoose.Types.ObjectId(id)) },
+    });
+
+    let correct = 0;
+    questions.forEach((question) => {
+      if (answers[question._id] === question.answerIndex) {
+        correct++;
+      }
+    });
+
+    const total = questions.length;
+    const result = await Result.calculateResults(userId, step, correct, total);
+
+    res.json({
+      result,
+      nextStep: step < 3 && result.score >= 75 ? step + 1 : null,
+    });
+  } catch (error) {
+    console.error("Error submitting test:", error);
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
-export const submitAnswers = async (req: Request, res: Response) => {
-  const user = req.user;
-  const { step } = req.params;
-  const stepNum = Number(step);
-  const answers: { questionId: string; answerIndex: number }[] = req.body.answers;
+export const getTestResults = async (req: Request, res: Response) => {
+  try {
+    const results = await Result.find({ user: req.user.id })
+      .sort({ step: 1 })
+      .select("-__v -createdAt -updatedAt");
 
-  if (!answers || !Array.isArray(answers)) return res.status(400).json({ message: "Answers required" });
-
-  // Fetch correct answers for submitted question IDs
-  const ids = answers.map((a) => new mongoose.Types.ObjectId(a.questionId));
-  const questions = await Question.find({ _id: { $in: ids } });
-  const total = questions.length;
-  let correct = 0;
-
-  const map = new Map<string, number>();
-  questions.forEach((q) => map.set(q._id.toString(), q.answerIndex));
-
-  answers.forEach((a) => {
-    const correctIndex = map.get(a.questionId);
-    if (correctIndex !== undefined && correctIndex === a.answerIndex) correct++;
-  });
-
-  const score = (correct / total) * 100;
-  let awardedLevel = determineAwardedLevel(stepNum, score);
-
-  // Save result
-  await Result.create({ user: user.id, step: stepNum, score, correct, total, awardedLevel });
-
-  res.json({ score, correct, total, awardedLevel });
+    res.json(results);
+  } catch (error) {
+    console.error("Error fetching test results:", error);
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
-const determineAwardedLevel = (step: number, score: number) => {
-  // Implement scoring rules from spec
-  if (step === 1) {
-    if (score < 25) return "Fail";
-    if (score < 50) return "A1";
-    if (score < 75) return "A2";
-    return "A2+Proceed";
+export const getCertification = async (req: Request, res: Response) => {
+  try {
+    const result = await Result.findOne({ user: req.user.id })
+      .sort({ awardedLevel: -1 })
+      .limit(1);
+
+    if (!result || !result.awardedLevel) {
+      return res.status(404).json({ message: "No certification achieved" });
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error("Error fetching certification:", error);
+    res.status(500).json({ message: "Server error" });
   }
-  if (step === 2) {
-    if (score < 25) return "Remain A2";
-    if (score < 50) return "B1";
-    if (score < 75) return "B2";
-    return "B2+Proceed";
-  }
-  if (step === 3) {
-    if (score < 25) return "Remain B2";
-    if (score < 50) return "C1";
-    return "C2";
-  }
-  return "";
 };
