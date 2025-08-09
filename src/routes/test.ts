@@ -4,7 +4,9 @@ import { authenticate } from "../middlewares/auth";
 
 const router = Router();
 
-router.get("/questions/:step", authenticate, testCtrl.fetchQuestionsForStep);
-router.post("/submit/:step", authenticate, testCtrl.submitAnswers);
+router.get("/questions", authenticate, testCtrl.getTestQuestions);
+router.post("/submit", authenticate, testCtrl.submitTest);
+router.get("/results", authenticate, testCtrl.getTestResults);
+router.get("/certificate", authenticate, testCtrl.getCertification);
 
-export default router;
+export default router; 

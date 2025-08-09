@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document } from "mongoose";
 
 export interface IOTP extends Document {
-  identifier: string; // email or phone
+  identifier: string; 
   code: string;
   expiresAt: Date;
 }
